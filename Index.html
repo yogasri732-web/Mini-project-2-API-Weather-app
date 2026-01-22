@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Smart Weather App</title>
+
+<style>
+/* BASE */
+body {
+  margin: 0;
+  height: 100vh;
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  transition: background 1s;
+}
+
+/* BACKGROUNDS */
+.sunny { background: linear-gradient(135deg,#fbc531,#e1b12c); }
+.cloudy { background: linear-gradient(135deg,#7f8fa6,#718093); }
+.rain-bg { background: linear-gradient(135deg,#487eb0,#273c75); }
+.snow-bg { background: linear-gradient(135deg,#dcdde1,#7f8fa6); }
+.night { background: linear-gradient(135deg,#2f3640,#353b48); }
+
+/* GLASS */
+.glass {
+  width: 360px;
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.18);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.3);
+  color: #fff;
+  text-align: center;
+  z-index: 2;
+}
+
+.box {
+  background: rgba(255,255,255,0.2);
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.temp {
+  font-size: 38px;
+  font-weight: bold;
+}
+
+/* MAP */
+#map {
+  width: 100%;
+  height: 180px;
+  border-radius: 12px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+/* RAIN */
+.rain {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+.rain span {
+  position: absolute;
+  width: 2px;
+  height: 15px;
+  background: rgba(255,255,255,.6);
+  animation: rain 0.6s linear infinite;
+}
+@keyframes rain {
+  0% { transform: translateY(-100px); }
+  100% { transform: translateY(100vh); }
+}
+
+/* SNOW */
+.snow span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: white;
+  border-radius: 50%;
+  opacity: .8;
+  animation: snow 6s linear infinite;
+}
+@keyframes snow {
+  0% { transform: translateY(-10px); }
+  100% { transform: translateY(100vh); }
+}
+</style>
+</head>
+
+<body class="sunny">
+
+<div id="particles"></div>
+
+<div class="glass">
+  <h2>🌦 Smart Weather</h2>
+  <p id="location">Detecting location…</p>
+
+  <div id="current"></div>
+  <div id="forecast"></div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+</div>
+
+<script>
+const apiKey = "EHB64KF49QQ9ZQB46BV5UU893";
+
+// LOCATION
+navigator.geolocation.getCurrentPosition(
+  pos => loadWeather(pos.coords.latitude, pos.coords.longitude),
+  () => document.getElementById("location").innerText = "Location denied"
+);
+
+// AUTO REFRESH (10 min)
+setInterval(() => {
+  navigator.geolocation.getCurrentPosition(
+    pos => loadWeather(pos.coords.latitude, pos.coords.longitude)
+  );
+}, 600000);
+
+async function loadWeather(lat, lon) {
+
+  // LOCATION NAME
+  const geo = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+  ).then(r => r.json());
+
+  document.getElementById("location").innerText =
+    `📍 ${geo.address.city || geo.address.town || geo.address.village || geo.address.state}, ${geo.address.country}`;
+
+  // MAP VIEW (OpenStreetMap)
+  document.getElementById("map").innerHTML = `
+    <iframe width="100%" height="180" frameborder="0"
+      src="https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.05}%2C${lat-0.05}%2C${lon+0.05}%2C${lat+0.05}&layer=mapnik&marker=${lat}%2C${lon}">
+    </iframe>
+  `;
+
+  // WEATHER
+  const data = await fetch(
+    `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${lat},${lon}?unitGroup=metric&include=days,current&key=${apiKey}&contentType=json`
+  ).then(r => r.json());
+
+  const c = data.currentConditions;
+  setBackground(c.conditions);
+
+  document.getElementById("current").innerHTML = `
+    <div class="box">
+      <div class="temp">${c.temp}°C</div>
+      ${c.conditions}<br>
+      💧 ${c.humidity}% | 🌬 ${c.windspeed} km/h
+    </div>
+  `;
+
+  // 7 DAY
+  let html = `<div class="box"><strong>7-Day Forecast</strong><br>`;
+  data.days.slice(1,8).forEach(d => {
+    html += `${new Date(d.datetime).toLocaleDateString('en',{weekday:'short'})}
+      : ${d.tempmax}° / ${d.tempmin}°<br>`;
+  });
+  html += `</div>`;
+  document.getElementById("forecast").innerHTML = html;
+}
+
+// BACKGROUND + EFFECTS
+function setBackground(cond) {
+  document.body.className = "";
+  document.getElementById("particles").innerHTML = "";
+
+  cond = cond.toLowerCase();
+
+  if (cond.includes("rain")) {
+    document.body.classList.add("rain-bg");
+    rainEffect();
+  }
+  else if (cond.includes("snow")) {
+    document.body.classList.add("snow-bg");
+    snowEffect();
+  }
+  else if (cond.includes("cloud")) {
+    document.body.classList.add("cloudy");
+  }
+  else {
+    document.body.classList.add("sunny");
+  }
+
+  const h = new Date().getHours();
+  if (h >= 19 || h <= 5) document.body.classList.add("night");
+}
+
+// 🌧 RAIN
+function rainEffect() {
+  const r = document.getElementById("particles");
+  r.className = "rain";
+  for (let i=0;i<120;i++){
+    const s = document.createElement("span");
+    s.style.left = Math.random()*100+"%";
+    s.style.animationDelay = Math.random()+"s";
+    r.appendChild(s);
+  }
+}
+
+// ❄ SNOW
+function snowEffect() {
+  const r = document.getElementById("particles");
+  r.className = "snow";
+  for (let i=0;i<80;i++){
+    const s = document.createElement("span");
+    s.style.left = Math.random()*100+"%";
+    s.style.animationDelay = Math.random()*5+"s";
+    r.appendChild(s);
+  }
+}
+</script>
+
+</body>
+  </html>
